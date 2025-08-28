@@ -29,6 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase-client'; // Usar o cliente Supabase principal
 import { entityTypesService, entitiesService } from '@/lib/entities-service';
+import { Database } from '@/lib/supabase.types'; // Importar os tipos do Supabase
 
 interface Role {
   id: string;
@@ -195,15 +196,16 @@ export default function CargosEntidadesPage() {
       if (!supabase) throw new Error('Supabase não configurado');
 
       if (editingRole) {
+        const updatePayload: Partial<Database['public']['Tables']['roles']['Update']> = {
+          name: roleForm.name,
+          display_name: roleForm.display_name,
+          description: roleForm.description,
+          level: roleForm.level,
+          // updated_at é gerenciado pelo banco de dados
+        };
         await supabase
           .from('roles')
-          .update({
-            name: roleForm.name,
-            display_name: roleForm.display_name,
-            description: roleForm.description,
-            level: roleForm.level,
-            updated_at: new Date().toISOString()
-          })
+          .update(updatePayload)
           .eq('id', editingRole.id);
         alert('Cargo atualizado com sucesso!');
       } else {
@@ -213,7 +215,9 @@ export default function CargosEntidadesPage() {
             ...roleForm,
             is_system: false,
             is_active: true
-          });
+          })
+          .select() // Adicionado .select() para garantir que o retorno seja do tipo correto
+          .single();
         alert('Cargo criado com sucesso!');
       }
 
@@ -303,7 +307,7 @@ export default function CargosEntidadesPage() {
           color: typeForm.color,
           icon: typeForm.icon,
           hierarchy_level: typeForm.hierarchy_level,
-          updated_at: new Date().toISOString()
+          // updated_at é gerenciado pelo banco de dados
         });
         alert('Tipo de entidade atualizado com sucesso!');
       } else {
