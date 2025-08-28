@@ -26,39 +26,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { supabaseBrowser } from '@/lib/supabase-browser';
+import { stockCategoryService, stockItemService, stockMovementService } from '@/lib/supabase-client';
+import { Database } from '@/lib/supabase.types';
 
-interface StockItem {
-  id: string;
-  name: string;
-  category: string;
-  current_stock: number;
-  min_stock: number;
-  unit: string;
-  cost_price: number;
-  supplier?: string;
-  last_movement: string;
+type StockItem = Database['public']['Tables']['stock_items']['Row'] & {
+  stock_categories?: { name: string } | null;
   status: 'ok' | 'low' | 'critical';
-}
-
-interface StockMovement {
-  id: string;
-  item_id: string;
-  type: 'entrada' | 'saida';
-  quantity: number;
-  reason: string;
-  responsible: string;
-  date: string;
-  cost?: number;
-  supplier?: string;
-}
-
-interface StockCategory {
-  id: string;
-  name: string;
-  description?: string;
+};
+type StockMovement = Database['public']['Tables']['stock_movements']['Row'] & {
+  stock_items?: { name: string } | null;
+};
+type StockCategory = Database['public']['Tables']['stock_categories']['Row'] & {
   items_count: number;
-}
+};
 
 export default function EstoquePage() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -77,28 +57,30 @@ export default function EstoquePage() {
   const [showMovementDialog, setShowMovementDialog] = useState(false);
   const [showCategoryDialog, setShowCategoryDialog] = useState(false);
 
-  const [itemForm, setItemForm] = useState({
+  const [itemForm, setItemForm] = useState<Omit<Database['public']['Tables']['stock_items']['Insert'], 'id' | 'created_at' | 'updated_at' | 'last_movement' | 'current_stock' | 'is_active'>>({
     name: '',
-    category: '',
+    stock_category_id: undefined,
     min_stock: 10,
     unit: 'unidade',
     cost_price: 0,
     supplier: ''
   });
+  const [editingItem, setEditingItem] = useState<StockItem | null>(null);
 
-  const [movementForm, setMovementForm] = useState({
-    item_id: '',
-    type: 'entrada' as 'entrada' | 'saida',
+  const [movementForm, setMovementForm] = useState<Omit<Database['public']['Tables']['stock_movements']['Insert'], 'id' | 'created_at'>>({
+    stock_item_id: undefined,
+    type: 'entrada',
     quantity: 0,
     reason: '',
     cost: 0,
     supplier: ''
   });
 
-  const [categoryForm, setCategoryForm] = useState({
+  const [categoryForm, setCategoryForm] = useState<Omit<Database['public']['Tables']['stock_categories']['Insert'], 'id' | 'created_at' | 'updated_at' | 'is_active'>>({
     name: '',
     description: ''
   });
+  const [editingCategory, setEditingCategory] = useState<StockCategory | null>(null);
 
   useEffect(() => {
     loadData();
@@ -108,75 +90,26 @@ export default function EstoquePage() {
     try {
       setLoading(true);
       
-      // Simular dados de estoque (em produção, viria do Supabase)
-      setStockItems([
-        {
-          id: '1',
-          name: 'Velas Vermelhas',
-          category: 'Velas',
-          current_stock: 25,
-          min_stock: 10,
-          unit: 'unidade',
-          cost_price: 3.50,
-          supplier: 'Casa de Umbanda São Jorge',
-          last_movement: new Date().toISOString(),
-          status: 'ok'
-        },
-        {
-          id: '2',
-          name: 'Cachaça 51',
-          category: 'Bebidas',
-          current_stock: 3,
-          min_stock: 5,
-          unit: 'garrafa',
-          cost_price: 15.00,
-          supplier: 'Distribuidora Central',
-          last_movement: new Date().toISOString(),
-          status: 'low'
-        },
-        {
-          id: '3',
-          name: 'Incenso de Arruda',
-          category: 'Incensos',
-          current_stock: 1,
-          min_stock: 10,
-          unit: 'pacote',
-          cost_price: 8.00,
-          supplier: 'Ervas & Cia',
-          last_movement: new Date().toISOString(),
-          status: 'critical'
-        }
+      const [itemsData, categoriesData, movementsData] = await Promise.all([
+        stockItemService.getAllItems(),
+        stockCategoryService.getAllCategories(),
+        stockMovementService.getAllMovements()
       ]);
 
-      setCategories([
-        { id: '1', name: 'Velas', description: 'Velas para rituais', items_count: 15 },
-        { id: '2', name: 'Incensos', description: 'Incensos e defumadores', items_count: 8 },
-        { id: '3', name: 'Bebidas', description: 'Cachaça e outras bebidas', items_count: 5 },
-        { id: '4', name: 'Oferendas', description: 'Materiais para oferendas', items_count: 12 }
-      ]);
+      const processedItems: StockItem[] = (itemsData || []).map(item => ({
+        ...item,
+        status: item.current_stock <= item.min_stock / 2 ? 'critical' : item.current_stock <= item.min_stock ? 'low' : 'ok'
+      }));
+      setStockItems(processedItems);
 
-      setMovements([
-        {
-          id: '1',
-          item_id: '1',
-          type: 'entrada',
-          quantity: 50,
-          reason: 'Compra mensal',
-          responsible: 'Admin',
-          date: new Date().toISOString(),
-          cost: 175.00,
-          supplier: 'Casa de Umbanda São Jorge'
-        },
-        {
-          id: '2',
-          item_id: '2',
-          type: 'saida',
-          quantity: 2,
-          reason: 'Ritual de sexta-feira',
-          responsible: 'Pai João',
-          date: new Date().toISOString()
-        }
-      ]);
+      const categoriesWithCount: StockCategory[] = (categoriesData || []).map(cat => ({
+        ...cat,
+        items_count: processedItems.filter(item => item.stock_category_id === cat.id).length
+      }));
+      setCategories(categoriesWithCount);
+
+      setMovements(movementsData || []);
+
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
     } finally {
@@ -204,13 +137,176 @@ export default function EstoquePage() {
 
   const filteredItems = stockItems.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter;
+    const matchesCategory = categoryFilter === 'all' || item.stock_category_id === categoryFilter;
     const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
     return matchesSearch && matchesCategory && matchesStatus;
   });
 
   const lowStockItems = stockItems.filter(item => item.status === 'low' || item.status === 'critical');
   const totalValue = stockItems.reduce((sum, item) => sum + (item.current_stock * item.cost_price), 0);
+
+  // Item CRUD Handlers
+  const handleOpenCreateItemDialog = () => {
+    setEditingItem(null);
+    setItemForm({
+      name: '',
+      stock_category_id: undefined,
+      min_stock: 10,
+      unit: 'unidade',
+      cost_price: 0,
+      supplier: ''
+    });
+    setShowCreateItemDialog(true);
+  };
+
+  const handleOpenEditItemDialog = (item: StockItem) => {
+    setEditingItem(item);
+    setItemForm({
+      name: item.name,
+      stock_category_id: item.stock_category_id || undefined,
+      min_stock: item.min_stock,
+      unit: item.unit,
+      cost_price: item.cost_price,
+      supplier: item.supplier || ''
+    });
+    setShowCreateItemDialog(true);
+  };
+
+  const handleSaveItem = async () => {
+    if (!itemForm.name.trim() || !itemForm.stock_category_id || itemForm.min_stock < 0 || itemForm.cost_price < 0) {
+      alert('Nome, categoria, estoque mínimo e preço de custo são obrigatórios e devem ser válidos.');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      if (editingItem) {
+        await stockItemService.updateItem(editingItem.id, itemForm);
+        alert('Item atualizado com sucesso!');
+      } else {
+        await stockItemService.createItem(itemForm);
+        alert('Item criado com sucesso!');
+      }
+      setShowCreateItemDialog(false);
+      await loadData();
+    } catch (error) {
+      console.error('Erro ao salvar item:', error);
+      alert('Erro ao salvar item: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteItem = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir este item? Todas as movimentações relacionadas serão mantidas, mas o item será removido.')) return;
+    setActionLoading(true);
+    try {
+      await stockItemService.deleteItem(id);
+      alert('Item excluído com sucesso!');
+      await loadData();
+    } catch (error) {
+      console.error('Erro ao deletar item:', error);
+      alert('Erro ao deletar item: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Movement CRUD Handlers
+  const handleOpenMovementDialog = () => {
+    setMovementForm({
+      stock_item_id: undefined,
+      type: 'entrada',
+      quantity: 0,
+      reason: '',
+      cost: 0,
+      supplier: ''
+    });
+    setShowMovementDialog(true);
+  };
+
+  const handleSaveMovement = async () => {
+    if (!movementForm.stock_item_id || movementForm.quantity <= 0 || !movementForm.reason.trim()) {
+      alert('Item, quantidade e motivo são obrigatórios e a quantidade deve ser maior que zero.');
+      return;
+    }
+    if (movementForm.type === 'entrada' && movementForm.cost! < 0) {
+      alert('O custo de entrada não pode ser negativo.');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await stockMovementService.createMovement(movementForm);
+      alert('Movimentação registrada com sucesso!');
+      setShowMovementDialog(false);
+      await loadData();
+    } catch (error) {
+      console.error('Erro ao registrar movimentação:', error);
+      alert('Erro ao registrar movimentação: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Category CRUD Handlers
+  const handleOpenCreateCategoryDialog = () => {
+    setEditingCategory(null);
+    setCategoryForm({
+      name: '',
+      description: ''
+    });
+    setShowCategoryDialog(true);
+  };
+
+  const handleOpenEditCategoryDialog = (category: StockCategory) => {
+    setEditingCategory(category);
+    setCategoryForm({
+      name: category.name,
+      description: category.description || ''
+    });
+    setShowCategoryDialog(true);
+  };
+
+  const handleSaveCategory = async () => {
+    if (!categoryForm.name.trim()) {
+      alert('Nome da categoria é obrigatório.');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      if (editingCategory) {
+        await stockCategoryService.updateCategory(editingCategory.id, categoryForm);
+        alert('Categoria atualizada com sucesso!');
+      } else {
+        await stockCategoryService.createCategory(categoryForm);
+        alert('Categoria criada com sucesso!');
+      }
+      setShowCategoryDialog(false);
+      await loadData();
+    } catch (error) {
+      console.error('Erro ao salvar categoria:', error);
+      alert('Erro ao salvar categoria: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta categoria? Todos os itens associados a ela terão sua categoria removida.')) return;
+    setActionLoading(true);
+    try {
+      await stockCategoryService.deleteCategory(id);
+      alert('Categoria excluída com sucesso!');
+      await loadData();
+    } catch (error) {
+      console.error('Erro ao deletar categoria:', error);
+      alert('Erro ao deletar categoria: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -337,7 +433,7 @@ export default function EstoquePage() {
                       </div>
                       <div>
                         <p className="font-medium">
-                          {stockItems.find(item => item.id === movement.item_id)?.name || 'Item'}
+                          {movement.stock_items?.name || 'Item Desconhecido'}
                         </p>
                         <p className="text-sm text-gray-500">{movement.reason}</p>
                       </div>
@@ -347,12 +443,18 @@ export default function EstoquePage() {
                         {movement.type === 'entrada' ? '+' : '-'}{movement.quantity}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {new Date(movement.date).toLocaleDateString('pt-BR')}
+                        {new Date(movement.created_at).toLocaleDateString('pt-BR')}
                       </p>
                     </div>
                   </div>
                 ))}
               </div>
+              {movements.length === 0 && (
+                <div className="text-center py-8">
+                  <TrendingUp className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500">Nenhuma movimentação recente</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -377,7 +479,7 @@ export default function EstoquePage() {
                 <SelectContent>
                   <SelectItem value="all">Todas as Categorias</SelectItem>
                   {categories.map(category => (
-                    <SelectItem key={category.id} value={category.name}>{category.name}</SelectItem>
+                    <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -395,16 +497,16 @@ export default function EstoquePage() {
             </div>
             <Dialog open={showCreateItemDialog} onOpenChange={setShowCreateItemDialog}>
               <DialogTrigger asChild>
-                <Button className="bg-red-700 hover:bg-red-800">
+                <Button className="bg-red-700 hover:bg-red-800" onClick={handleOpenCreateItemDialog}>
                   <Plus className="mr-2 h-4 w-4" />
                   Novo Item
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Cadastrar Item</DialogTitle>
+                  <DialogTitle>{editingItem ? 'Editar Item' : 'Cadastrar Item'}</DialogTitle>
                   <DialogDescription>
-                    Adicione um novo item ao estoque
+                    {editingItem ? 'Edite as informações do item no estoque' : 'Adicione um novo item ao estoque'}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -420,13 +522,13 @@ export default function EstoquePage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="category">Categoria *</Label>
-                      <Select value={itemForm.category} onValueChange={(value) => setItemForm({...itemForm, category: value})}>
+                      <Select value={itemForm.stock_category_id} onValueChange={(value) => setItemForm({...itemForm, stock_category_id: value})}>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione" />
                         </SelectTrigger>
                         <SelectContent>
                           {categories.map(category => (
-                            <SelectItem key={category.id} value={category.name}>{category.name}</SelectItem>
+                            <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -480,16 +582,12 @@ export default function EstoquePage() {
                 </div>
                 <div className="flex space-x-2 mt-6">
                   <Button 
-                    onClick={() => {
-                      // Implementar criação de item
-                      alert('Item criado com sucesso!');
-                      setShowCreateItemDialog(false);
-                    }}
+                    onClick={handleSaveItem}
                     className="bg-red-700 hover:bg-red-800"
                     disabled={actionLoading}
                   >
                     <Save className="mr-2 h-4 w-4" />
-                    Salvar Item
+                    {actionLoading ? 'Salvando...' : 'Salvar Item'}
                   </Button>
                   <Button variant="outline" onClick={() => setShowCreateItemDialog(false)}>
                     <X className="mr-2 h-4 w-4" />
@@ -519,7 +617,7 @@ export default function EstoquePage() {
                       <div>
                         <h3 className="font-medium text-gray-900">{item.name}</h3>
                         <div className="flex items-center space-x-4 text-sm text-gray-500">
-                          <span>{item.category}</span>
+                          <span>{item.stock_categories?.name || 'Sem Categoria'}</span>
                           <span>Estoque: {item.current_stock} {item.unit}</span>
                           <span>Mín: {item.min_stock}</span>
                           <span>R$ {item.cost_price.toFixed(2)}</span>
@@ -536,16 +634,15 @@ export default function EstoquePage() {
                         </p>
                       </div>
                       <div className="flex space-x-1">
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" onClick={() => handleOpenEditItemDialog(item)}>
                           <Edit className="h-4 w-4" />
                         </Button>
                         <Button 
                           variant="ghost" 
                           size="sm" 
+                          onClick={() => handleDeleteItem(item.id)}
                           className="text-red-600 hover:text-red-700"
+                          disabled={actionLoading}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -579,7 +676,7 @@ export default function EstoquePage() {
             </div>
             <Dialog open={showMovementDialog} onOpenChange={setShowMovementDialog}>
               <DialogTrigger asChild>
-                <Button className="bg-red-700 hover:bg-red-800">
+                <Button className="bg-red-700 hover:bg-red-800" onClick={handleOpenMovementDialog}>
                   <Plus className="mr-2 h-4 w-4" />
                   Nova Movimentação
                 </Button>
@@ -595,7 +692,7 @@ export default function EstoquePage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="movement-item">Item *</Label>
-                      <Select value={movementForm.item_id} onValueChange={(value) => setMovementForm({...movementForm, item_id: value})}>
+                      <Select value={movementForm.stock_item_id} onValueChange={(value) => setMovementForm({...movementForm, stock_item_id: value})}>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione o item" />
                         </SelectTrigger>
@@ -665,16 +762,12 @@ export default function EstoquePage() {
                 </div>
                 <div className="flex space-x-2 mt-6">
                   <Button 
-                    onClick={() => {
-                      // Implementar movimentação
-                      alert('Movimentação registrada com sucesso!');
-                      setShowMovementDialog(false);
-                    }}
+                    onClick={handleSaveMovement}
                     className="bg-red-700 hover:bg-red-800"
                     disabled={actionLoading}
                   >
                     <Save className="mr-2 h-4 w-4" />
-                    Registrar
+                    {actionLoading ? 'Registrando...' : 'Registrar'}
                   </Button>
                   <Button variant="outline" onClick={() => setShowMovementDialog(false)}>
                     <X className="mr-2 h-4 w-4" />
@@ -709,16 +802,16 @@ export default function EstoquePage() {
                       </div>
                       <div>
                         <h3 className="font-medium text-gray-900">
-                          {stockItems.find(item => item.id === movement.item_id)?.name || 'Item'}
+                          {movement.stock_items?.name || 'Item Desconhecido'}
                         </h3>
                         <div className="flex items-center space-x-4 text-sm text-gray-500">
                           <div className="flex items-center">
                             <Calendar className="h-3 w-3 mr-1" />
-                            {new Date(movement.date).toLocaleDateString('pt-BR')}
+                            {new Date(movement.created_at).toLocaleDateString('pt-BR')}
                           </div>
                           <div className="flex items-center">
                             <User className="h-3 w-3 mr-1" />
-                            {movement.responsible}
+                            {movement.responsible || 'N/A'}
                           </div>
                           <span>{movement.reason}</span>
                         </div>
@@ -735,6 +828,17 @@ export default function EstoquePage() {
                   </div>
                 ))}
               </div>
+              {movements.length === 0 && (
+                <div className="text-center py-12">
+                  <TrendingUp className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    Nenhuma movimentação encontrada
+                  </h3>
+                  <p className="text-gray-500">
+                    Comece registrando uma nova movimentação de estoque
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -748,16 +852,16 @@ export default function EstoquePage() {
             </div>
             <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
               <DialogTrigger asChild>
-                <Button className="bg-red-700 hover:bg-red-800">
+                <Button className="bg-red-700 hover:bg-red-800" onClick={handleOpenCreateCategoryDialog}>
                   <Plus className="mr-2 h-4 w-4" />
                   Nova Categoria
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Criar Categoria</DialogTitle>
+                  <DialogTitle>{editingCategory ? 'Editar Categoria' : 'Criar Categoria'}</DialogTitle>
                   <DialogDescription>
-                    Adicione uma nova categoria de materiais
+                    {editingCategory ? 'Edite as informações da categoria' : 'Adicione uma nova categoria de materiais'}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -782,16 +886,12 @@ export default function EstoquePage() {
                 </div>
                 <div className="flex space-x-2 mt-6">
                   <Button 
-                    onClick={() => {
-                      // Implementar criação de categoria
-                      alert('Categoria criada com sucesso!');
-                      setShowCategoryDialog(false);
-                    }}
+                    onClick={handleSaveCategory}
                     className="bg-red-700 hover:bg-red-800"
                     disabled={actionLoading}
                   >
                     <Save className="mr-2 h-4 w-4" />
-                    Salvar Categoria
+                    {actionLoading ? 'Salvando...' : 'Salvar Categoria'}
                   </Button>
                   <Button variant="outline" onClick={() => setShowCategoryDialog(false)}>
                     <X className="mr-2 h-4 w-4" />
@@ -812,13 +912,15 @@ export default function EstoquePage() {
                       <CardDescription>{category.description}</CardDescription>
                     </div>
                     <div className="flex space-x-1">
-                      <Button variant="ghost" size="sm">
+                      <Button variant="ghost" size="sm" onClick={() => handleOpenEditCategoryDialog(category)}>
                         <Edit className="h-4 w-4" />
                       </Button>
                       <Button 
                         variant="ghost" 
                         size="sm" 
+                        onClick={() => handleDeleteCategory(category.id)}
                         className="text-red-600 hover:text-red-700"
+                        disabled={actionLoading}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

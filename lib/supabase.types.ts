@@ -364,6 +364,167 @@ export type Database = {
           updated_at?: string;
         };
       };
+      blog_posts: {
+        Row: {
+          id: string;
+          title: string;
+          slug: string;
+          excerpt?: string;
+          content: string;
+          featured_image?: string;
+          images: string[];
+          author_id?: string;
+          status: 'draft' | 'published' | 'archived';
+          published_at?: string;
+          tags: string[];
+          category?: string;
+          meta_title?: string;
+          meta_description?: string;
+          view_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          slug: string;
+          excerpt?: string;
+          content: string;
+          featured_image?: string;
+          images?: string[];
+          author_id?: string;
+          status?: 'draft' | 'published' | 'archived';
+          published_at?: string;
+          tags?: string[];
+          category?: string;
+          meta_title?: string;
+          meta_description?: string;
+          view_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          slug?: string;
+          excerpt?: string;
+          content?: string;
+          featured_image?: string;
+          images?: string[];
+          author_id?: string;
+          status?: 'draft' | 'published' | 'archived';
+          published_at?: string;
+          tags?: string[];
+          category?: string;
+          meta_title?: string;
+          meta_description?: string;
+          view_count?: number;
+          updated_at?: string;
+        };
+      };
+      stock_categories: {
+        Row: {
+          id: string;
+          name: string;
+          description?: string;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          description?: string;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          description?: string;
+          is_active?: boolean;
+          updated_at?: string;
+        };
+      };
+      stock_items: {
+        Row: {
+          id: string;
+          name: string;
+          stock_category_id?: string;
+          current_stock: number;
+          min_stock: number;
+          unit: string;
+          cost_price: number;
+          supplier?: string;
+          last_movement: string;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          stock_category_id?: string;
+          current_stock?: number;
+          min_stock?: number;
+          unit?: string;
+          cost_price?: number;
+          supplier?: string;
+          last_movement?: string;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          stock_category_id?: string;
+          current_stock?: number;
+          min_stock?: number;
+          unit?: string;
+          cost_price?: number;
+          supplier?: string;
+          last_movement?: string;
+          is_active?: boolean;
+          updated_at?: string;
+        };
+      };
+      stock_movements: {
+        Row: {
+          id: string;
+          stock_item_id?: string;
+          type: 'entrada' | 'saida';
+          quantity: number;
+          reason?: string;
+          responsible?: string;
+          cost?: number;
+          supplier?: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          stock_item_id?: string;
+          type: 'entrada' | 'saida';
+          quantity: number;
+          reason?: string;
+          responsible?: string;
+          cost?: number;
+          supplier?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          stock_item_id?: string;
+          type?: 'entrada' | 'saida';
+          quantity?: number;
+          reason?: string;
+          responsible?: string;
+          cost?: number;
+          supplier?: string;
+          created_at?: string;
+        };
+      };
     };
   };
 };

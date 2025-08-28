@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { Database } from './supabase.types'; // Importar os tipos atualizados
 
 // Verificar se as variáveis de ambiente estão definidas
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -6,7 +7,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 // Criar cliente Supabase apenas se as variáveis estiverem configuradas
 export const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey, {
+  ? createClient<Database>(supabaseUrl, supabaseAnonKey, { // Usar o tipo Database aqui
       auth: {
         autoRefreshToken: true,
         persistSession: true,
@@ -57,7 +58,10 @@ export const memberService = {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Erro ao buscar membros:', error);
+      return [];
+    }
     return data || [];
   }
 };
@@ -314,4 +318,120 @@ export const blogService = {
     if (error) throw error;
     return true;
   }
+};
+
+// Serviço CRUD para categorias de estoque
+export const stockCategoryService = {
+  async getAllCategories() {
+    if (!supabase) throw new Error('Supabase não configurado');
+    const { data, error } = await supabase
+      .from('stock_categories')
+      .select('*')
+      .order('name');
+    if (error) throw error;
+    return data;
+  },
+  async createCategory(categoryData: Omit<Database['public']['Tables']['stock_categories']['Insert'], 'id' | 'created_at' | 'updated_at'>) {
+    if (!supabase) throw new Error('Supabase não configurado');
+    const { data, error } = await supabase
+      .from('stock_categories')
+      .insert(categoryData)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+  async updateCategory(id: string, categoryData: Partial<Database['public']['Tables']['stock_categories']['Update']>) {
+    if (!supabase) throw new Error('Supabase não configurado');
+    const { data, error } = await supabase
+      .from('stock_categories')
+      .update(categoryData)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+  async deleteCategory(id: string) {
+    if (!supabase) throw new Error('Supabase não configurado');
+    const { error } = await supabase
+      .from('stock_categories')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+    return true;
+  }
+};
+
+// Serviço CRUD para itens de estoque
+export const stockItemService = {
+  async getAllItems() {
+    if (!supabase) throw new Error('Supabase não configurado');
+    const { data, error } = await supabase
+      .from('stock_items')
+      .select(`
+        *,
+        stock_categories(name)
+      `)
+      .order('name');
+    if (error) throw error;
+    return data;
+  },
+  async createItem(itemData: Omit<Database['public']['Tables']['stock_items']['Insert'], 'id' | 'created_at' | 'updated_at' | 'last_movement'>) {
+    if (!supabase) throw new Error('Supabase não configurado');
+    const { data, error } = await supabase
+      .from('stock_items')
+      .insert(itemData)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+  async updateItem(id: string, itemData: Partial<Database['public']['Tables']['stock_items']['Update']>) {
+    if (!supabase) throw new Error('Supabase não configurado');
+    const { data, error } = await supabase
+      .from('stock_items')
+      .update(itemData)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+  async deleteItem(id: string) {
+    if (!supabase) throw new Error('Supabase não configurado');
+    const { error } = await supabase
+      .from('stock_items')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+    return true;
+  }
+};
+
+// Serviço CRUD para movimentações de estoque
+export const stockMovementService = {
+  async getAllMovements() {
+    if (!supabase) throw new Error('Supabase não configurado');
+    const { data, error } = await supabase
+      .from('stock_movements')
+      .select(`
+        *,
+        stock_items(name)
+      `)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data;
+  },
+  async createMovement(movementData: Omit<Database['public']['Tables']['stock_movements']['Insert'], 'id' | 'created_at'>) {
+    if (!supabase) throw new Error('Supabase não configurado');
+    const { data, error } = await supabase
+      .from('stock_movements')
+      .insert(movementData)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+  // Não há necessidade de update/delete para movimentações, pois são registros históricos
 };
