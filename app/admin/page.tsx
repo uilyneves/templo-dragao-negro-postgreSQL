@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { supabaseBrowser } from '@/lib/supabase-browser';
+import { dashboardService } from '@/lib/supabase-client'; // Importar o serviço
 
 interface DashboardData {
   totalMembers: number;
@@ -22,7 +22,6 @@ interface DashboardData {
   pendingConsultations: number;
   totalRevenue: number;
   monthlyRevenue: number;
-  loading: boolean;
 }
 
 export default function AdminDashboard() {
@@ -33,8 +32,8 @@ export default function AdminDashboard() {
     pendingConsultations: 0,
     totalRevenue: 0,
     monthlyRevenue: 0,
-    loading: true
   });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadDashboardData();
@@ -42,52 +41,26 @@ export default function AdminDashboard() {
 
   const loadDashboardData = async () => {
     try {
-      if (!supabaseBrowser) {
-        console.error('Supabase não configurado');
-        setDashboardData(prev => ({ ...prev, loading: false }));
-        return;
-      }
-
-      // Carregar dados reais do banco
-      const [membersResult, consultationsResult] = await Promise.all([
-        supabaseBrowser.from('members').select('*', { count: 'exact', head: true }),
-        supabaseBrowser.from('consultations').select('*')
-      ]);
-
-      const totalMembers = membersResult.count || 0;
-      const consultations = consultationsResult.data || [];
-      
-      const completedConsultations = consultations.filter(c => c.status === 'completed').length;
-      const pendingConsultations = consultations.filter(c => c.status === 'pending').length;
-      
-      // Calcular receita real
-      const totalRevenue = consultations
-        .filter(c => c.payment_status === 'paid')
-        .reduce((sum, c) => sum + (c.amount || 0), 0);
-
-      // Receita do mês atual
-      const currentMonth = new Date().toISOString().slice(0, 7);
-      const monthlyRevenue = consultations
-        .filter(c => c.payment_status === 'paid' && c.created_at?.startsWith(currentMonth))
-        .reduce((sum, c) => sum + (c.amount || 0), 0);
-
-      setDashboardData({
-        totalMembers,
-        totalConsultations: consultations.length,
-        completedConsultations,
-        pendingConsultations,
-        totalRevenue,
-        monthlyRevenue,
-        loading: false
-      });
-
+      setLoading(true);
+      const data = await dashboardService.getDashboardData(); // Usar o serviço
+      setDashboardData(data);
     } catch (error) {
       console.error('Erro ao carregar dados do dashboard:', error);
-      setDashboardData(prev => ({ ...prev, loading: false }));
+      // Definir dados padrão em caso de erro
+      setDashboardData({
+        totalMembers: 0,
+        totalConsultations: 0,
+        completedConsultations: 0,
+        pendingConsultations: 0,
+        totalRevenue: 0,
+        monthlyRevenue: 0,
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (dashboardData.loading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
