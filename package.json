@@ -1,15 +1,4 @@
 {
-  "name": "nextjs",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "NODE_OPTIONS=--max_old_space_size=4096 next build",
-    "start": "next start",
-    "lint": "next lint",
-    "update-browserslist": "npx update-browserslist-db@latest",
-    "postinstall": "npx update-browserslist-db@latest"
-  },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
     "@next/swc-wasm-nodejs": "13.5.1",
@@ -71,6 +60,13 @@
     "tailwindcss-animate": "^1.0.7",
     "typescript": "5.2.2",
     "vaul": "^0.9.9",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "caniuse-lite": "^1.0.30001737"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
   }
 }
