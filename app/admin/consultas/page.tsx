@@ -58,6 +58,7 @@ export default function ConsultasPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [editingConsultation, setEditingConsultation] = useState<Consultation | null>(null);
 
   const [consultationForm, setConsultationForm] = useState({
     member_id: '',
@@ -65,7 +66,9 @@ export default function ConsultasPage() {
     time: '',
     question: '',
     exu_consulted: '',
-    amount: 120.00
+    amount: 120.00,
+    status: 'pending',
+    payment_status: 'pending'
   });
 
   useEffect(() => {
@@ -91,7 +94,37 @@ export default function ConsultasPage() {
     }
   };
 
-  const handleCreateConsultation = async () => {
+  const handleOpenCreateDialog = () => {
+    setEditingConsultation(null);
+    setConsultationForm({
+      member_id: '',
+      date: '',
+      time: '',
+      question: '',
+      exu_consulted: '',
+      amount: 120.00,
+      status: 'pending',
+      payment_status: 'pending'
+    });
+    setShowCreateDialog(true);
+  };
+
+  const handleOpenEditDialog = (consultation: Consultation) => {
+    setEditingConsultation(consultation);
+    setConsultationForm({
+      member_id: consultation.member_id || '',
+      date: consultation.date,
+      time: consultation.time,
+      question: consultation.question || '',
+      exu_consulted: consultation.exu_consulted || '',
+      amount: consultation.amount,
+      status: consultation.status,
+      payment_status: consultation.payment_status
+    });
+    setShowCreateDialog(true);
+  };
+
+  const handleSaveConsultation = async () => {
     if (!consultationForm.member_id || !consultationForm.date || !consultationForm.time) {
       alert('Membro, data e horário são obrigatórios');
       return;
@@ -99,23 +132,31 @@ export default function ConsultasPage() {
 
     setActionLoading(true);
     try {
-      await consultationCrudService.createConsultation(consultationForm);
+      if (editingConsultation) {
+        await consultationCrudService.updateConsultation(editingConsultation.id, consultationForm);
+        alert('Consulta atualizada com sucesso!');
+      } else {
+        await consultationCrudService.createConsultation(consultationForm);
+        alert('Consulta criada com sucesso!');
+      }
 
       setShowCreateDialog(false);
+      setEditingConsultation(null);
       setConsultationForm({
         member_id: '',
         date: '',
         time: '',
         question: '',
         exu_consulted: '',
-        amount: 120.00
+        amount: 120.00,
+        status: 'pending',
+        payment_status: 'pending'
       });
       
       await loadData();
-      alert('Consulta criada com sucesso!');
     } catch (error) {
-      console.error('Erro ao criar consulta:', error);
-      alert('Erro ao criar consulta: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+      console.error('Erro ao salvar consulta:', error);
+      alert('Erro ao salvar consulta: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
     } finally {
       setActionLoading(false);
     }
@@ -218,16 +259,16 @@ export default function ConsultasPage() {
           </Select>
           <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
             <DialogTrigger asChild>
-              <Button className="bg-red-700 hover:bg-red-800">
+              <Button className="bg-red-700 hover:bg-red-800" onClick={handleOpenCreateDialog}>
                 <Plus className="mr-2 h-4 w-4" />
                 Nova Consulta
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
-                <DialogTitle>Agendar Nova Consulta</DialogTitle>
+                <DialogTitle>{editingConsultation ? 'Editar Consulta' : 'Agendar Nova Consulta'}</DialogTitle>
                 <DialogDescription>
-                  Agende uma consulta espiritual para um membro
+                  {editingConsultation ? 'Edite as informações da consulta' : 'Agende uma consulta espiritual para um membro'}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
@@ -294,15 +335,49 @@ export default function ConsultasPage() {
                     placeholder="Motivo da consulta..."
                   />
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="status">Status da Consulta</Label>
+                    <Select value={consultationForm.status} onValueChange={(value) => setConsultationForm({...consultationForm, status: value})}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pending">Pendente</SelectItem>
+                        <SelectItem value="confirmed">Confirmada</SelectItem>
+                        <SelectItem value="in_progress">Em Andamento</SelectItem>
+                        <SelectItem value="completed">Realizada</SelectItem>
+                        <SelectItem value="cancelled">Cancelada</SelectItem>
+                        <SelectItem value="no_show">Não Compareceu</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="payment_status">Status do Pagamento</Label>
+                    <Select value={consultationForm.payment_status} onValueChange={(value) => setConsultationForm({...consultationForm, payment_status: value})}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pending">Pendente</SelectItem>
+                        <SelectItem value="processing">Processando</SelectItem>
+                        <SelectItem value="paid">Pago</SelectItem>
+                        <SelectItem value="failed">Falhou</SelectItem>
+                        <SelectItem value="refunded">Reembolsado</SelectItem>
+                        <SelectItem value="cancelled">Cancelado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
               <div className="flex space-x-2 mt-6">
                 <Button 
-                  onClick={handleCreateConsultation} 
+                  onClick={handleSaveConsultation} 
                   className="bg-red-700 hover:bg-red-800"
                   disabled={actionLoading}
                 >
                   <Save className="mr-2 h-4 w-4" />
-                  {actionLoading ? 'Agendando...' : 'Agendar Consulta'}
+                  {actionLoading ? 'Salvando...' : 'Salvar Consulta'}
                 </Button>
                 <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
                   <X className="mr-2 h-4 w-4" />
@@ -428,7 +503,7 @@ export default function ConsultasPage() {
                     </div>
                   </div>
                   <div className="flex space-x-1">
-                    <Button variant="ghost" size="sm">
+                    <Button variant="ghost" size="sm" onClick={() => handleOpenEditDialog(consultation)}>
                       <Edit className="h-4 w-4" />
                     </Button>
                     <Button 

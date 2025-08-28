@@ -22,7 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { supabaseBrowser } from '@/lib/supabase-browser';
+import { blogService } from '@/lib/supabase-client'; // Importar o serviço de blog
 
 interface BlogPost {
   id: string;
@@ -45,6 +45,7 @@ export default function BlogPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [editingPost, setEditingPost] = useState<BlogPost | null>(null);
 
   const [postForm, setPostForm] = useState({
     title: '',
@@ -63,15 +64,8 @@ export default function BlogPage() {
   const loadPosts = async () => {
     try {
       setLoading(true);
-      if (!supabaseBrowser) throw new Error('Supabase não configurado');
-
-      const { data, error } = await supabaseBrowser
-        .from('blog_posts')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setPosts(data || []);
+      const data = await blogService.getAllPosts();
+      setPosts(data);
     } catch (error) {
       console.error('Erro ao carregar posts:', error);
       setPosts([]);
@@ -91,7 +85,35 @@ export default function BlogPage() {
       .trim();
   };
 
-  const handleCreatePost = async () => {
+  const handleOpenCreateDialog = () => {
+    setEditingPost(null);
+    setPostForm({
+      title: '',
+      slug: '',
+      excerpt: '',
+      content: '',
+      category: '',
+      tags: '',
+      status: 'draft'
+    });
+    setShowCreateDialog(true);
+  };
+
+  const handleOpenEditDialog = (post: BlogPost) => {
+    setEditingPost(post);
+    setPostForm({
+      title: post.title,
+      slug: post.slug,
+      excerpt: post.excerpt || '',
+      content: post.content,
+      category: post.category || '',
+      tags: post.tags.join(', '),
+      status: post.status
+    });
+    setShowCreateDialog(true);
+  };
+
+  const handleSavePost = async () => {
     if (!postForm.title.trim() || !postForm.content.trim()) {
       alert('Título e conteúdo são obrigatórios');
       return;
@@ -99,24 +121,25 @@ export default function BlogPage() {
 
     setActionLoading(true);
     try {
-      if (!supabaseBrowser) throw new Error('Supabase não configurado');
-
       const slug = postForm.slug || generateSlug(postForm.title);
       const tags = postForm.tags ? postForm.tags.split(',').map(tag => tag.trim()) : [];
+      const postData = {
+        ...postForm,
+        slug,
+        tags,
+        published_at: postForm.status === 'published' ? new Date().toISOString() : null,
+      };
 
-      const { error } = await supabaseBrowser
-        .from('blog_posts')
-        .insert({
-          ...postForm,
-          slug,
-          tags,
-          published_at: postForm.status === 'published' ? new Date().toISOString() : null,
-          view_count: 0
-        });
-
-      if (error) throw error;
+      if (editingPost) {
+        await blogService.updatePost(editingPost.id, postData);
+        alert('Post atualizado com sucesso!');
+      } else {
+        await blogService.createPost(postData);
+        alert('Post criado com sucesso!');
+      }
 
       setShowCreateDialog(false);
+      setEditingPost(null);
       setPostForm({
         title: '',
         slug: '',
@@ -128,10 +151,9 @@ export default function BlogPage() {
       });
       
       await loadPosts();
-      alert('Post criado com sucesso!');
     } catch (error) {
-      console.error('Erro ao criar post:', error);
-      alert('Erro ao criar post: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+      console.error('Erro ao salvar post:', error);
+      alert('Erro ao salvar post: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
     } finally {
       setActionLoading(false);
     }
@@ -142,14 +164,7 @@ export default function BlogPage() {
     
     setActionLoading(true);
     try {
-      if (!supabaseBrowser) throw new Error('Supabase não configurado');
-
-      const { error } = await supabaseBrowser
-        .from('blog_posts')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      await blogService.deletePost(id);
 
       await loadPosts();
       alert('Post excluído com sucesso!');
@@ -161,21 +176,13 @@ export default function BlogPage() {
     }
   };
 
-  const handlePublishPost = async (id: string) => {
+  const handlePublishPost = async (post: BlogPost) => {
     setActionLoading(true);
     try {
-      if (!supabaseBrowser) throw new Error('Supabase não configurado');
-
-      const { error } = await supabaseBrowser
-        .from('blog_posts')
-        .update({ 
-          status: 'published',
-          published_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
-
-      if (error) throw error;
+      await blogService.updatePost(post.id, { 
+        status: 'published',
+        published_at: new Date().toISOString(),
+      });
 
       await loadPosts();
       alert('Post publicado com sucesso!');
@@ -253,16 +260,16 @@ export default function BlogPage() {
           </Select>
           <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
             <DialogTrigger asChild>
-              <Button className="bg-red-700 hover:bg-red-800">
+              <Button className="bg-red-700 hover:bg-red-800" onClick={handleOpenCreateDialog}>
                 <Plus className="mr-2 h-4 w-4" />
                 Novo Post
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-4xl">
               <DialogHeader>
-                <DialogTitle>Criar Novo Post</DialogTitle>
+                <DialogTitle>{editingPost ? 'Editar Post' : 'Criar Novo Post'}</DialogTitle>
                 <DialogDescription>
-                  Adicione um novo artigo ao blog espiritual
+                  {editingPost ? 'Edite o artigo do blog espiritual' : 'Adicione um novo artigo ao blog espiritual'}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 max-h-96 overflow-y-auto">
@@ -355,7 +362,7 @@ export default function BlogPage() {
               </div>
               <div className="flex space-x-2 mt-6">
                 <Button 
-                  onClick={handleCreatePost} 
+                  onClick={handleSavePost} 
                   className="bg-red-700 hover:bg-red-800"
                   disabled={actionLoading}
                 >
@@ -485,14 +492,14 @@ export default function BlogPage() {
                       <Button 
                         variant="ghost" 
                         size="sm"
-                        onClick={() => handlePublishPost(post.id)}
+                        onClick={() => handlePublishPost(post)}
                         className="text-green-600 hover:text-green-700"
                         disabled={actionLoading}
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
                     )}
-                    <Button variant="ghost" size="sm">
+                    <Button variant="ghost" size="sm" onClick={() => handleOpenEditDialog(post)}>
                       <Edit className="h-4 w-4" />
                     </Button>
                     <Button 

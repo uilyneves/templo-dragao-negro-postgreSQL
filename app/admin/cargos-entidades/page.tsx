@@ -27,7 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { supabaseBrowser } from '@/lib/supabase-browser';
+import { supabase } from '@/lib/supabase-client'; // Usar o cliente Supabase principal
 import { entityTypesService, entitiesService } from '@/lib/entities-service';
 
 interface Role {
@@ -82,6 +82,7 @@ export default function CargosEntidadesPage() {
     description: '',
     level: 10
   });
+  const [editingRole, setEditingRole] = useState<Role | null>(null);
 
   // Estados para Entidades
   const [entityTypes, setEntityTypes] = useState<EntityType[]>([]);
@@ -98,6 +99,7 @@ export default function CargosEntidadesPage() {
     offerings: '',
     characteristics: ''
   });
+  const [editingEntity, setEditingEntity] = useState<Entity | null>(null);
   const [typeForm, setTypeForm] = useState({
     name: '',
     description: '',
@@ -105,6 +107,8 @@ export default function CargosEntidadesPage() {
     icon: 'Zap',
     hierarchy_level: 1
   });
+  const [editingEntityType, setEditingEntityType] = useState<EntityType | null>(null);
+
 
   useEffect(() => {
     loadData();
@@ -123,9 +127,9 @@ export default function CargosEntidadesPage() {
 
   const loadRoles = async () => {
     try {
-      if (!supabaseBrowser) return;
+      if (!supabase) throw new Error('Supabase não configurado');
 
-      const { data, error } = await supabaseBrowser
+      const { data, error } = await supabase
         .from('roles')
         .select('*')
         .order('level', { ascending: false });
@@ -158,7 +162,29 @@ export default function CargosEntidadesPage() {
     }
   };
 
-  const handleCreateRole = async () => {
+  const handleOpenCreateRoleDialog = () => {
+    setEditingRole(null);
+    setRoleForm({
+      name: '',
+      display_name: '',
+      description: '',
+      level: 10
+    });
+    setShowCreateRoleDialog(true);
+  };
+
+  const handleOpenEditRoleDialog = (role: Role) => {
+    setEditingRole(role);
+    setRoleForm({
+      name: role.name,
+      display_name: role.display_name,
+      description: role.description || '',
+      level: role.level
+    });
+    setShowCreateRoleDialog(true);
+  };
+
+  const handleSaveRole = async () => {
     if (!roleForm.name.trim() || !roleForm.display_name.trim()) {
       alert('Nome e nome de exibição são obrigatórios');
       return;
@@ -166,19 +192,33 @@ export default function CargosEntidadesPage() {
 
     setActionLoading(true);
     try {
-      if (!supabaseBrowser) throw new Error('Supabase não configurado');
+      if (!supabase) throw new Error('Supabase não configurado');
 
-      const { error } = await supabaseBrowser
-        .from('roles')
-        .insert({
-          ...roleForm,
-          is_system: false,
-          is_active: true
-        });
-
-      if (error) throw error;
+      if (editingRole) {
+        await supabase
+          .from('roles')
+          .update({
+            name: roleForm.name,
+            display_name: roleForm.display_name,
+            description: roleForm.description,
+            level: roleForm.level,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingRole.id);
+        alert('Cargo atualizado com sucesso!');
+      } else {
+        await supabase
+          .from('roles')
+          .insert({
+            ...roleForm,
+            is_system: false,
+            is_active: true
+          });
+        alert('Cargo criado com sucesso!');
+      }
 
       setShowCreateRoleDialog(false);
+      setEditingRole(null);
       setRoleForm({
         name: '',
         display_name: '',
@@ -187,80 +227,9 @@ export default function CargosEntidadesPage() {
       });
       
       await loadRoles();
-      alert('Cargo criado com sucesso!');
     } catch (error) {
-      console.error('Erro ao criar cargo:', error);
-      alert('Erro ao criar cargo: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleCreateEntityType = async () => {
-    if (!typeForm.name.trim()) {
-      alert('Nome é obrigatório');
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      await entityTypesService.create({
-        ...typeForm,
-        is_active: true
-      });
-
-      setShowCreateTypeDialog(false);
-      setTypeForm({
-        name: '',
-        description: '',
-        color: '#dc2626',
-        icon: 'Zap',
-        hierarchy_level: 1
-      });
-      
-      await loadEntities();
-      alert('Tipo de entidade criado com sucesso!');
-    } catch (error) {
-      console.error('Erro ao criar tipo:', error);
-      alert('Erro ao criar tipo: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleCreateEntity = async () => {
-    if (!entityForm.name.trim() || !entityForm.entity_type_id) {
-      alert('Nome e tipo são obrigatórios');
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      await entitiesService.create({
-        ...entityForm,
-        colors: entityForm.colors ? entityForm.colors.split(',').map(c => c.trim()) : [],
-        offerings: entityForm.offerings ? entityForm.offerings.split(',').map(o => o.trim()) : [],
-        characteristics: entityForm.characteristics ? entityForm.characteristics.split(',').map(c => c.trim()) : [],
-        attributes: {},
-        is_active: true
-      });
-
-      setShowCreateEntityDialog(false);
-      setEntityForm({
-        name: '',
-        entity_type_id: '',
-        description: '',
-        day_of_week: '',
-        colors: '',
-        offerings: '',
-        characteristics: ''
-      });
-      
-      await loadEntities();
-      alert('Entidade criada com sucesso!');
-    } catch (error) {
-      console.error('Erro ao criar entidade:', error);
-      alert('Erro ao criar entidade: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+      console.error('Erro ao salvar cargo:', error);
+      alert('Erro ao salvar cargo: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
     } finally {
       setActionLoading(false);
     }
@@ -276,9 +245,9 @@ export default function CargosEntidadesPage() {
     
     setActionLoading(true);
     try {
-      if (!supabaseBrowser) throw new Error('Supabase não configurado');
+      if (!supabase) throw new Error('Supabase não configurado');
 
-      const { error } = await supabaseBrowser
+      const { error } = await supabase
         .from('roles')
         .delete()
         .eq('id', id);
@@ -290,6 +259,165 @@ export default function CargosEntidadesPage() {
     } catch (error) {
       console.error('Erro ao deletar cargo:', error);
       alert('Erro ao deletar cargo: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleOpenCreateTypeDialog = () => {
+    setEditingEntityType(null);
+    setTypeForm({
+      name: '',
+      description: '',
+      color: '#dc2626',
+      icon: 'Zap',
+      hierarchy_level: 1
+    });
+    setShowCreateTypeDialog(true);
+  };
+
+  const handleOpenEditTypeDialog = (type: EntityType) => {
+    setEditingEntityType(type);
+    setTypeForm({
+      name: type.name,
+      description: type.description || '',
+      color: type.color,
+      icon: type.icon,
+      hierarchy_level: type.hierarchy_level
+    });
+    setShowCreateTypeDialog(true);
+  };
+
+  const handleSaveEntityType = async () => {
+    if (!typeForm.name.trim()) {
+      alert('Nome é obrigatório');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      if (editingEntityType) {
+        await entityTypesService.update(editingEntityType.id, {
+          name: typeForm.name,
+          description: typeForm.description,
+          color: typeForm.color,
+          icon: typeForm.icon,
+          hierarchy_level: typeForm.hierarchy_level,
+          updated_at: new Date().toISOString()
+        });
+        alert('Tipo de entidade atualizado com sucesso!');
+      } else {
+        await entityTypesService.create({
+          ...typeForm,
+          is_active: true
+        });
+        alert('Tipo de entidade criado com sucesso!');
+      }
+
+      setShowCreateTypeDialog(false);
+      setEditingEntityType(null);
+      setTypeForm({
+        name: '',
+        description: '',
+        color: '#dc2626',
+        icon: 'Zap',
+        hierarchy_level: 1
+      });
+      
+      await loadEntities();
+    } catch (error) {
+      console.error('Erro ao salvar tipo:', error);
+      alert('Erro ao salvar tipo: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteEntityType = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir este tipo de entidade?')) return;
+    
+    setActionLoading(true);
+    try {
+      await entityTypesService.delete(id);
+      await loadEntities();
+      alert('Tipo de entidade excluído com sucesso!');
+    } catch (error) {
+      console.error('Erro ao deletar tipo de entidade:', error);
+      alert('Erro ao deletar tipo de entidade: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleOpenCreateEntityDialog = () => {
+    setEditingEntity(null);
+    setEntityForm({
+      name: '',
+      entity_type_id: '',
+      description: '',
+      day_of_week: '',
+      colors: '',
+      offerings: '',
+      characteristics: ''
+    });
+    setShowCreateEntityDialog(true);
+  };
+
+  const handleOpenEditEntityDialog = (entity: Entity) => {
+    setEditingEntity(entity);
+    setEntityForm({
+      name: entity.name,
+      entity_type_id: entity.entity_type_id || '',
+      description: entity.description || '',
+      day_of_week: entity.day_of_week || '',
+      colors: entity.colors.join(', '),
+      offerings: entity.offerings.join(', '),
+      characteristics: entity.characteristics.join(', ')
+    });
+    setShowCreateEntityDialog(true);
+  };
+
+  const handleSaveEntity = async () => {
+    if (!entityForm.name.trim() || !entityForm.entity_type_id) {
+      alert('Nome e tipo são obrigatórios');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const entityData = {
+        ...entityForm,
+        colors: entityForm.colors ? entityForm.colors.split(',').map(c => c.trim()) : [],
+        offerings: entityForm.offerings ? entityForm.offerings.split(',').map(o => o.trim()) : [],
+        characteristics: entityForm.characteristics ? entityForm.characteristics.split(',').map(c => c.trim()) : [],
+        attributes: {}, // Manter como objeto vazio se não houver campos específicos
+        is_active: true
+      };
+
+      if (editingEntity) {
+        await entitiesService.update(editingEntity.id, entityData);
+        alert('Entidade atualizada com sucesso!');
+      } else {
+        await entitiesService.create(entityData);
+        alert('Entidade criada com sucesso!');
+      }
+
+      setShowCreateEntityDialog(false);
+      setEditingEntity(null);
+      setEntityForm({
+        name: '',
+        entity_type_id: '',
+        description: '',
+        day_of_week: '',
+        colors: '',
+        offerings: '',
+        characteristics: ''
+      });
+      
+      await loadEntities();
+    } catch (error) {
+      console.error('Erro ao salvar entidade:', error);
+      alert('Erro ao salvar entidade: ' + (error instanceof Error ? error.message : 'Erro desconhecido'));
     } finally {
       setActionLoading(false);
     }
@@ -326,6 +454,16 @@ export default function CargosEntidadesPage() {
     if (level >= 40) return 'bg-yellow-100 text-yellow-800';
     if (level >= 20) return 'bg-blue-100 text-blue-800';
     return 'bg-gray-100 text-gray-800';
+  };
+
+  const getIconComponent = (iconName: string) => {
+    switch (iconName) {
+      case 'Zap': return Zap;
+      case 'Heart': return Heart;
+      case 'Star': return Star;
+      case 'Crown': return Crown;
+      default: return Sparkles;
+    }
   };
 
   if (loading) {
@@ -369,16 +507,16 @@ export default function CargosEntidadesPage() {
             </div>
             <Dialog open={showCreateRoleDialog} onOpenChange={setShowCreateRoleDialog}>
               <DialogTrigger asChild>
-                <Button className="bg-red-700 hover:bg-red-800">
+                <Button className="bg-red-700 hover:bg-red-800" onClick={handleOpenCreateRoleDialog}>
                   <Plus className="mr-2 h-4 w-4" />
                   Novo Cargo
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Criar Novo Cargo</DialogTitle>
+                  <DialogTitle>{editingRole ? 'Editar Cargo' : 'Criar Novo Cargo'}</DialogTitle>
                   <DialogDescription>
-                    Adicione um novo cargo à hierarquia da casa
+                    {editingRole ? 'Edite as informações do cargo' : 'Adicione um novo cargo à hierarquia da casa'}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -390,6 +528,7 @@ export default function CargosEntidadesPage() {
                         value={roleForm.name}
                         onChange={(e) => setRoleForm({...roleForm, name: e.target.value})}
                         placeholder="ex: medium_desenvolvido"
+                        disabled={!!editingRole?.is_system}
                       />
                     </div>
                     <div>
@@ -417,9 +556,10 @@ export default function CargosEntidadesPage() {
                       id="level"
                       type="number"
                       min="1"
-                      max="99"
+                      max="100"
                       value={roleForm.level}
                       onChange={(e) => setRoleForm({...roleForm, level: parseInt(e.target.value)})}
+                      disabled={!!editingRole?.is_system}
                     />
                     <p className="text-xs text-gray-500 mt-1">
                       Níveis mais altos têm mais privilégios (Super Admin = 100)
@@ -428,7 +568,7 @@ export default function CargosEntidadesPage() {
                 </div>
                 <div className="flex space-x-2 mt-6">
                   <Button 
-                    onClick={handleCreateRole} 
+                    onClick={handleSaveRole} 
                     className="bg-red-700 hover:bg-red-800"
                     disabled={actionLoading}
                   >
@@ -489,7 +629,10 @@ export default function CargosEntidadesPage() {
                 <Key className="h-4 w-4 text-blue-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">6</div>
+                <div className="text-2xl font-bold">
+                  {/* Contar níveis únicos */}
+                  {[...new Set(roles.map(r => r.level))].length}
+                </div>
                 <p className="text-xs text-gray-500">Níveis hierárquicos</p>
               </CardContent>
             </Card>
@@ -542,7 +685,7 @@ export default function CargosEntidadesPage() {
                       <div className="flex space-x-1">
                         {!role.is_system && (
                           <>
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" onClick={() => handleOpenEditRoleDialog(role)}>
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button 
@@ -594,16 +737,16 @@ export default function CargosEntidadesPage() {
             <div className="flex space-x-2">
               <Dialog open={showCreateTypeDialog} onOpenChange={setShowCreateTypeDialog}>
                 <DialogTrigger asChild>
-                  <Button variant="outline">
+                  <Button variant="outline" onClick={handleOpenCreateTypeDialog}>
                     <Plus className="mr-2 h-4 w-4" />
                     Novo Tipo
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Criar Tipo de Entidade</DialogTitle>
+                    <DialogTitle>{editingEntityType ? 'Editar Tipo de Entidade' : 'Criar Tipo de Entidade'}</DialogTitle>
                     <DialogDescription>
-                      Adicione um novo tipo (Exús, Pombagiras, etc.)
+                      {editingEntityType ? 'Edite as informações do tipo de entidade' : 'Adicione um novo tipo (Exús, Pombagiras, etc.)'}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
@@ -646,6 +789,7 @@ export default function CargosEntidadesPage() {
                             <SelectItem value="Heart">Coração (Pombagiras)</SelectItem>
                             <SelectItem value="Star">Estrela (Orixás)</SelectItem>
                             <SelectItem value="Crown">Coroa (Chefes)</SelectItem>
+                            <SelectItem value="Sparkles">Brilho (Geral)</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -653,7 +797,7 @@ export default function CargosEntidadesPage() {
                   </div>
                   <div className="flex space-x-2 mt-6">
                     <Button 
-                      onClick={handleCreateEntityType} 
+                      onClick={handleSaveEntityType} 
                       className="bg-red-700 hover:bg-red-800"
                       disabled={actionLoading}
                     >
@@ -670,16 +814,16 @@ export default function CargosEntidadesPage() {
 
               <Dialog open={showCreateEntityDialog} onOpenChange={setShowCreateEntityDialog}>
                 <DialogTrigger asChild>
-                  <Button className="bg-red-700 hover:bg-red-800">
+                  <Button className="bg-red-700 hover:bg-red-800" onClick={handleOpenCreateEntityDialog}>
                     <Plus className="mr-2 h-4 w-4" />
                     Nova Entidade
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-2xl">
                   <DialogHeader>
-                    <DialogTitle>Cadastrar Entidade Espiritual</DialogTitle>
+                    <DialogTitle>{editingEntity ? 'Editar Entidade Espiritual' : 'Cadastrar Entidade Espiritual'}</DialogTitle>
                     <DialogDescription>
-                      Adicione uma nova entidade ao templo
+                      {editingEntity ? 'Edite as informações da entidade' : 'Adicione uma nova entidade ao templo'}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 max-h-96 overflow-y-auto">
@@ -765,7 +909,7 @@ export default function CargosEntidadesPage() {
                   </div>
                   <div className="flex space-x-2 mt-6">
                     <Button 
-                      onClick={handleCreateEntity} 
+                      onClick={handleSaveEntity} 
                       className="bg-red-700 hover:bg-red-800"
                       disabled={actionLoading}
                     >
@@ -843,53 +987,56 @@ export default function CargosEntidadesPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {filteredEntities.map((entity) => (
-                  <div key={entity.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-4">
-                      <div 
-                        className="w-10 h-10 rounded-full flex items-center justify-center"
-                        style={{ backgroundColor: entity.entity_types?.color + '20' }}
-                      >
-                        <Sparkles className="h-5 w-5" style={{ color: entity.entity_types?.color }} />
-                      </div>
-                      <div>
-                        <h3 className="font-medium text-gray-900">{entity.name}</h3>
-                        <p className="text-sm text-gray-600">{entity.description}</p>
-                        <div className="flex items-center space-x-4 text-sm text-gray-500">
-                          <span>{entity.entity_types?.name}</span>
-                          {entity.day_of_week && <span>{entity.day_of_week}</span>}
-                          <span>{entity.characteristics.length} características</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      <div className="text-right">
-                        <Badge className="bg-purple-100 text-purple-800">
-                          {entity.entity_types?.name}
-                        </Badge>
-                        <div className="mt-1">
-                          <Badge className={entity.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-                            {entity.is_active ? 'Ativo' : 'Inativo'}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="flex space-x-1">
-                        <Button variant="ghost" size="sm">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          onClick={() => handleDeleteEntity(entity.id)}
-                          className="text-red-600 hover:text-red-700"
-                          disabled={actionLoading}
+                {filteredEntities.map((entity) => {
+                  const IconComponent = getIconComponent(entity.entity_types?.icon || 'Sparkles');
+                  return (
+                    <div key={entity.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-4">
+                        <div 
+                          className="w-10 h-10 rounded-full flex items-center justify-center"
+                          style={{ backgroundColor: entity.entity_types?.color + '20' }}
                         >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                          <IconComponent className="h-5 w-5" style={{ color: entity.entity_types?.color }} />
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-gray-900">{entity.name}</h3>
+                          <p className="text-sm text-gray-600">{entity.description}</p>
+                          <div className="flex items-center space-x-4 text-sm text-gray-500">
+                            <span>{entity.entity_types?.name}</span>
+                            {entity.day_of_week && <span>{entity.day_of_week}</span>}
+                            <span>{entity.characteristics.length} características</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-4">
+                        <div className="text-right">
+                          <Badge className="bg-purple-100 text-purple-800">
+                            {entity.entity_types?.name}
+                          </Badge>
+                          <div className="mt-1">
+                            <Badge className={entity.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                              {entity.is_active ? 'Ativo' : 'Inativo'}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="flex space-x-1">
+                          <Button variant="ghost" size="sm" onClick={() => handleOpenEditEntityDialog(entity)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => handleDeleteEntity(entity.id)}
+                            className="text-red-600 hover:text-red-700"
+                            disabled={actionLoading}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {filteredEntities.length === 0 && (
@@ -900,6 +1047,74 @@ export default function CargosEntidadesPage() {
                   </h3>
                   <p className="text-gray-500">
                     {searchEntities ? 'Tente ajustar o termo de busca' : 'Comece cadastrando uma nova entidade'}
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Lista de Tipos de Entidades */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Tipos de Entidades</CardTitle>
+              <CardDescription>
+                Gerencie os tipos de entidades (Exús, Pombagiras, etc.)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {entityTypes.map((type) => {
+                  const IconComponent = getIconComponent(type.icon);
+                  return (
+                    <div key={type.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-4">
+                        <div 
+                          className="w-10 h-10 rounded-full flex items-center justify-center"
+                          style={{ backgroundColor: type.color + '20' }}
+                        >
+                          <IconComponent className="h-5 w-5" style={{ color: type.color }} />
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-gray-900">{type.name}</h3>
+                          <p className="text-sm text-gray-600">{type.description}</p>
+                          <div className="flex items-center space-x-4 text-sm text-gray-500">
+                            <span>Nível Hierárquico: {type.hierarchy_level}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-4">
+                        <div className="text-right">
+                          <Badge className={type.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                            {type.is_active ? 'Ativo' : 'Inativo'}
+                          </Badge>
+                        </div>
+                        <div className="flex space-x-1">
+                          <Button variant="ghost" size="sm" onClick={() => handleOpenEditTypeDialog(type)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => handleDeleteEntityType(type.id)}
+                            className="text-red-600 hover:text-red-700"
+                            disabled={actionLoading}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {entityTypes.length === 0 && (
+                <div className="text-center py-12">
+                  <Star className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    Nenhum tipo de entidade encontrado
+                  </h3>
+                  <p className="text-gray-500">
+                    Comece criando um novo tipo de entidade
                   </p>
                 </div>
               )}

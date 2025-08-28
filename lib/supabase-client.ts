@@ -250,3 +250,68 @@ export const dashboardService = {
     }
   }
 };
+
+// Serviço CRUD para posts do blog
+export const blogService = {
+  async getAllPosts() {
+    if (!supabase) throw new Error('Supabase não configurado');
+
+    const { data, error } = await supabase
+      .from('blog_posts')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Erro ao buscar posts:', error);
+      return [];
+    }
+    return data || [];
+  },
+
+  async createPost(postData: any) {
+    if (!supabase) throw new Error('Supabase não configurado');
+
+    const { data, error } = await supabase
+      .from('blog_posts')
+      .insert({
+        ...postData,
+        view_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async updatePost(id: string, postData: any) {
+    if (!supabase) throw new Error('Supabase não configurado');
+
+    const { data, error } = await supabase
+      .from('blog_posts')
+      .update({
+        ...postData,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async deletePost(id: string) {
+    if (!supabase) throw new Error('Supabase não configurado');
+
+    const { error } = await supabase
+      .from('blog_posts')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
+  }
+};
