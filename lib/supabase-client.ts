@@ -1,51 +1,24 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import { Database } from './supabase.types'; // Importar os tipos atualizados
 
 // Verificar se as variáveis de ambiente estão definidas
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-// Criar cliente Supabase
-// Exportar como uma função para garantir que o cliente só seja criado quando necessário
-// e para evitar que 'supabase' seja 'null' em tempo de compilação, mas ainda permitindo
-// que a ausência de variáveis de ambiente seja tratada em runtime.
-let cachedSupabase: SupabaseClient<Database> | null = null;
+// Criar cliente Supabase apenas se as variáveis estiverem configuradas
+export const supabase = supabaseUrl && supabaseAnonKey 
+  ? createClient<Database>(supabaseUrl, supabaseAnonKey, { // Usar o tipo Database aqui
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true
+      }
+    })
+  : null;
 
-export function getSupabaseClient(): SupabaseClient<Database> {
-  if (cachedSupabase) {
-    return cachedSupabase;
-  }
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error('Supabase URL ou Anon Key não configuradas. Verifique suas variáveis de ambiente.');
-    throw new Error('Supabase client not configured: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are required.');
-  }
-
-  cachedSupabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true
-    }
-  });
-  return cachedSupabase;
-}
-
-// Exportar o cliente diretamente para uso em componentes e serviços
-// Onde o cliente é usado, é importante garantir que as variáveis de ambiente estejam presentes
-// ou lidar com o erro lançado por getSupabaseClient().
-export const supabase = getSupabaseClient();
-
-
-// Função para verificar se Supabase está configurado (agora sempre true se o cliente foi criado sem erro)
+// Função para verificar se Supabase está configurado
 export function isSupabaseConfigured(): boolean {
-  try {
-    // Tentar acessar o cliente para verificar se foi inicializado sem erro
-    // Se o construtor acima lançou um erro, esta função não será chamada ou o erro será capturado
-    return !!getSupabaseClient();
-  } catch (e) {
-    return false;
-  }
+  return !!(supabaseUrl && supabaseAnonKey);
 }
 
 // =====================================================
